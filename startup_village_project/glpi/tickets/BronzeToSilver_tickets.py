@@ -44,7 +44,7 @@ silver_path = "abfss://silver@startupvillagedatalake.dfs.core.windows.net/glpi/t
 # MAGIC # Read Bronze Tickets
 
 # COMMAND ----------
-
+df_ticket_b = spark.read.format("delta").load(f'{bronze_path}/tickets')
 
 latest_ingestion_date = df_ticket_b.select(max("ingestion_date")).first()[0]
 
