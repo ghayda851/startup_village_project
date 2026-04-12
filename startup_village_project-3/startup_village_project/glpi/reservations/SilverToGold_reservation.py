@@ -59,7 +59,7 @@ GOLD_ROOT = "abfss://gold@startupvillagedatalake.dfs.core.windows.net/reservatio
 
 silver_res_path = f"{SILVER_ROOT}/reservations"
 silver_users_path = f"{SILVER_ROOT}/users"
-silver_reserveditems_path = "abfss://silver@startupvillagedatalake.dfs.core.windows.net/glpi/reserveditems"
+silver_reserveditems_path = f"{SILVER_ROOT}/reserveditems"
 
 gold_res_enriched_path = f"{GOLD_ROOT}/reservations_enriched_current"
 
@@ -86,14 +86,14 @@ df_u = spark.read.format("delta").load(silver_users_path).select(
     col("full_name").alias("user_full_name"),
 )
 
-df_ri = spark.read.format("delta").load(silver_reserveditems_path).select(
+df_reserveditems = spark.read.format("delta").load(silver_reserveditems_path).select(
     col("reservation_item_id"),
     col("reservation_item_name"),
 ).dropDuplicates(["reservation_item_id"])
 
 print("Reservations rows:", df_r.count())
 print("Users rows:", df_u.count())
-print("Reserveditems rows:", df_ri.count())
+print("Reserveditems rows:", df_reserveditems.count())
 
 # COMMAND ----------
 
@@ -105,7 +105,7 @@ print("Reserveditems rows:", df_ri.count())
 df_gold = (
     df_r
     .join(df_u, on="user_id", how="left")
-    .join(df_ri, on="reservation_item_id", how="left")
+    .join(df_reserveditems, on="reservation_item_id", how="left")
     .withColumn("_ingest_gold_ts", current_timestamp())
     .withColumn("start_date", to_date(col("start_ts")))
     .withColumn("start_month", date_format(col("start_ts"), "yyyy-MM"))
