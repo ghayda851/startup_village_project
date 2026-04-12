@@ -5,7 +5,7 @@
 # MAGIC
 # MAGIC Enrichment:
 # MAGIC - Join to Silver users to add user login + full name (like tickets)
-# MAGIC - No mapping yet for reservation_item_id (kept as ID)
+# MAGIC - Join to Silver reserveditems to add reservation_item_name
 # MAGIC
 # MAGIC Outputs (Gold Delta):
 # MAGIC - reservations_enriched_current
@@ -59,6 +59,7 @@ GOLD_ROOT = "abfss://gold@startupvillagedatalake.dfs.core.windows.net/reservatio
 
 silver_res_path = f"{SILVER_ROOT}/reservations"
 silver_users_path = f"{SILVER_ROOT}/users"
+silver_reserveditems_path = f"{SILVER_ROOT}/reserveditems"
 
 gold_res_enriched_path = f"{GOLD_ROOT}/reservations_enriched_current"
 
@@ -85,8 +86,14 @@ df_u = spark.read.format("delta").load(silver_users_path).select(
     col("full_name").alias("user_full_name"),
 )
 
+df_reserveditems = spark.read.format("delta").load(silver_reserveditems_path).select(
+    col("reservation_item_id"),
+    col("reservation_item_name"),
+).dropDuplicates(["reservation_item_id"])
+
 print("Reservations rows:", df_r.count())
 print("Users rows:", df_u.count())
+print("Reserveditems rows:", df_reserveditems.count())
 
 # COMMAND ----------
 
@@ -98,6 +105,7 @@ print("Users rows:", df_u.count())
 df_gold = (
     df_r
     .join(df_u, on="user_id", how="left")
+    .join(df_reserveditems, on="reservation_item_id", how="left")
     .withColumn("_ingest_gold_ts", current_timestamp())
     .withColumn("start_date", to_date(col("start_ts")))
     .withColumn("start_month", date_format(col("start_ts"), "yyyy-MM"))
@@ -125,6 +133,7 @@ df_gold_out = df_gold.select(
     "user_login",
     "user_full_name",
     "reservation_item_id",
+    "reservation_item_name",
     "group_id",
     "start_ts",
     "end_ts",
@@ -278,14 +287,14 @@ kpi_trends_by_month = (
 
 
 kpi_by_item = (
-    dfp.groupBy("reservation_item_id")
+    dfp.groupBy("reservation_item_id", "reservation_item_name")
        .agg(
            count(lit(1)).alias("reservations_count"),
            sum(when(valid_duration, col("duration_hours")).otherwise(lit(0.0))).alias("reserved_hours"),
            avg(when(valid_duration, col("duration_hours")).otherwise(lit(None).cast("double"))).alias("avg_duration_hours"),
        )
        .withColumn("gold_kpi_build_ts", build_ts)
-       .orderBy(col("reservations_count").desc())
+       .orderBy(col("reservations_count").desc(), col("reservation_item_id"))
 )
 
 # COMMAND ----------
@@ -381,6 +390,7 @@ kpi_invalid = (
            "user_login",
            "user_full_name",
            "reservation_item_id",
+           "reservation_item_name",
            "start_ts",
            "end_ts",
            "ingestion_date",
